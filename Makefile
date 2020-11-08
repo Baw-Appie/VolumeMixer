@@ -21,7 +21,7 @@ else
 VolumeMixer_LIBRARIES = applist mryipc
 endif
 
-SUBPROJECTS += volumemixer
+SUBPROJECTS += volumemixerpref
 
 include $(THEOS)/makefiles/common.mk
 include $(THEOS_MAKE_PATH)/tweak.mk
@@ -42,7 +42,7 @@ after-install::
 ifdef SIMULATOR
 include $(THEOS)/makefiles/locatesim.mk
 BUNDLE_NAME = volumemixer
-PREF_FOLDER_NAME = $(shell echo $(BUNDLE_NAME) | tr A-Z a-z)
+PREF_FOLDER_NAME = volumemixerpref
 endif
 
 ifneq (,$(filter x86_64 i386,$(ARCHS)))
