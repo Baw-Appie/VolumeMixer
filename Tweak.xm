@@ -2,7 +2,6 @@
 #import <substrate.h>
 #import <MRYIPCCenter/MRYIPCCenter.h>
 
-#import <cmath>
 #import <AudioToolbox/AudioToolbox.h>
 #import <AVFoundation/AVFoundation.h>
 #import <OpenAL/OpenAL.h>
