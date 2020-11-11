@@ -1,0 +1,6 @@
+[submodule "jetfire"]
+	path = jetfire
+	url = https://github.com/acmacalister/jetfire.git
+[submodule "CoreWebSocket"]
+	path = CoreWebSocket
+	url = https://github.com/mirek/CoreWebSocket.git

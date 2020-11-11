@@ -7,6 +7,7 @@
 #import <OpenAL/OpenAL.h>
 #import <WebKit/WebKit.h>
 
+#import "jetfire/JFRWebSocket.h"
 #import "VMHUDView.h"
 #import "VMHUDWindow.h"
 #import "VMHUDRootViewController.h"
@@ -434,41 +435,71 @@ void setScale(double curScale){
 	[lstAVPlayer setVolume:g_curScale];
     
 }
-@interface VMAPPServer : NSObject
+@interface VMAppWsClient : NSObject<JFRWebSocketDelegate>
 -(instancetype)initWithName:(NSString* )name;
 @end
-@implementation VMAPPServer{
-	MRYIPCCenter* _center;
+@implementation VMAppWsClient{
+	JFRWebSocket *_socket;
 }
 -(instancetype)initWithName:(NSString* )name
 {
 	if ((self = [super init]))
 	{
-		_center = [MRYIPCCenter centerNamed:name];
-		[_center addTarget:self action:@selector(setVolume:)];
-		NSLog(@"[MRYIPC] running server in %@", [NSProcessInfo processInfo].processName);
+		NSString*urlString=[NSString stringWithFormat:@"ws://127.0.0.1:9996"];
+		_socket = [[JFRWebSocket alloc] initWithURL:[NSURL URLWithString:urlString] protocols:nil];
+		_socket.delegate = self;
+		[self connect:nil];
+		[[NSNotificationCenter defaultCenter] addObserver:self
+                                         selector:@selector(connect:)
+                                             name:UIApplicationWillEnterForegroundNotification
+                                           object:nil];
 	}
 	return self;
+}
+-(void)connect:(id)arg{
+	NSLog(@"%s %d",__func__,_socket.isConnected);
+	if(!_socket.isConnected)	[_socket connect];
 }
 -(void)setVolume:(NSDictionary*)args{
 	double curScale=[args[@"curScale"] doubleValue];
 	setScale(curScale);
 }
-
+#pragma mark websocket delegate
+-(void)websocketDidConnect:(JFRWebSocket*)socket {
+	//send bundleid
+	static BOOL isFirst=1;
+    NSLog(@"websocket is connected");
+    NSString*bundleID=[[NSBundle mainBundle] bundleIdentifier];
+    int pid=[[NSProcessInfo processInfo] processIdentifier];
+    NSDictionary*args=@{@"bundleID" : bundleID,@"pid":@(pid),@"isFirst":@(isFirst)};
+    NSData*data=[NSJSONSerialization dataWithJSONObject:args options:nil error:nil];
+    [_socket writeData:data];
+    isFirst=0;
+}
+-(void)websocketDidDisconnect:(JFRWebSocket*)socket error:(NSError*)error {
+    NSLog(@"websocket is disconnected: %@", [error localizedDescription]);
+    // [_socket connect];
+}
+-(void)websocket:(JFRWebSocket*)socket didReceiveMessage:(NSString*)string {
+    NSLog(@"Received text: %@", string);
+    NSData *data = [string dataUsingEncoding:NSUTF8StringEncoding];
+    NSMutableDictionary *userInfo = [NSJSONSerialization JSONObjectWithData:data
+                                                        options:NSJSONReadingMutableContainers
+                                                          error:nil];
+    NSString*bundleId=userInfo[@"bundleId"];
+	if([bundleId isEqualToString:[[NSBundle mainBundle] bundleIdentifier]]){
+		[self setVolume:userInfo];
+	}
+}
+-(void)websocket:(JFRWebSocket*)socket didReceiveData:(NSData*)data {
+	NSLog(@"Received data: %@", data);
+}
 @end
-static VMAPPServer *appServer;
+static VMAppWsClient *wsClient;
 void registerApp(){
 	static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-    	//send bundleid
-		NSString*bundleID=[[NSBundle mainBundle] bundleIdentifier];
-		MRYIPCCenter *idClient=[MRYIPCCenter centerNamed:@"com.brend0n.volumemixer/register"];
-
-		int pid=[[NSProcessInfo processInfo] processIdentifier];
-		[idClient callExternalMethod:@selector(register:)withArguments:@{@"bundleID" : bundleID,@"pid":[NSNumber numberWithInt:pid]} completion:^(id ret){}];
-
-		NSString*appNotify=[NSString stringWithFormat:@"com.brend0n.volumemixer/%@~%d/setVolume",bundleID,pid];
-		appServer=[[VMAPPServer alloc] initWithName:appNotify];
+		wsClient=[[VMAppWsClient alloc] initWithName:nil];
     });
 }
 

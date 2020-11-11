@@ -5,9 +5,11 @@
 #import <objc/runtime.h>
 #import <notify.h>
 #import <AppList/AppList.h>
-#import <MRYIPCCenter/MRYIPCCenter.h>
 #import <sys/types.h>
 #import <signal.h>
+#include "CoreWebSocket/CoreWebSocket.h"
+
+extern VMHUDWindow*hudWindow;
 
 @interface VMHUDRootViewController()<UICollectionViewDelegate,UICollectionViewDataSource,UIGestureRecognizerDelegate>
 @property (strong, nonatomic) UICollectionView *collectionView;
@@ -20,7 +22,8 @@
 #define kHudWidth 47.
 #define kHudHeight 148.
 @implementation VMHUDRootViewController{
-	MRYIPCCenter* _center;
+	// BLWebSocketsServer*_ws;
+    WebSocketRef _webSocket;
 }
 -(instancetype)init{
 	self= [super init];
@@ -84,12 +87,12 @@
 }
 - (void)longPress:(UILongPressGestureRecognizer *)longPress{
 	if (longPress.state == UIGestureRecognizerStateBegan){
-		NSLog(@"hideWindow: %@",longPress.view);
+		// NSLog(@"hideWindow: %@",longPress.view);
     	[(VMHUDWindow*)[self.view superview] hideWindow];
     }
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch{
-	NSLog(@"touch view: %@",touch.view);
+	// NSLog(@"touch view: %@",touch.view);
 	return touch.view==self.view;
  }
 
@@ -165,17 +168,33 @@
 }
 
 -(void)initServer{
-	_center = [MRYIPCCenter centerNamed:@"com.brend0n.volumemixer/register"];
-	[_center addTarget:self action:@selector(register:)];
+    _webSocket = WebSocketCreateWithHostAndPort(NULL, kWebSocketHostAny, 9996, NULL);
+    if (_webSocket) {
+        _webSocket->callbacks.didClientReadCallback = callback;
+    }
 
 	int token;
 	notify_register_dispatch("com.brend0n.volumemixer/nowPlayingWebKitDidChange", &token, dispatch_get_main_queue(), ^(int token) {
 		[self setNowPlayingWebKit];
 	});
 }
+void callback(WebSocketRef self, WebSocketClientRef client, CFStringRef value) {
+    if (value) {
+        CFShow(value);
+        // NSLog(@"%@",(__bridge id)value);
+        NSData *data = [(__bridge id)value dataUsingEncoding:NSUTF8StringEncoding];
+        NSMutableDictionary *userInfo = [NSJSONSerialization JSONObjectWithData:data
+                                                        options:NSJSONReadingMutableContainers
+                                                          error:nil];
+        // NSLog(@"userinfo: %@",userInfo);
+        [(VMHUDRootViewController*)hudWindow.rootViewController register:userInfo];
+    }
+}
 //receive bundleID
 -(void)register:(NSDictionary*)args{
 	NSLog(@"registering...");
+    BOOL isFirst=[args[@"isFirst"] boolValue];
+    if(!isFirst) return;
 	NSString* bundleID=args[@"bundleID"];
 	NSNumber*pid=args[@"pid"];
 	NSString*appNotify=[NSString stringWithFormat:@"com.brend0n.volumemixer/%@~%d/setVolume",bundleID,[pid intValue]];
@@ -187,8 +206,7 @@
 
     	VMHUDView* hudView=[[VMHUDView alloc] initWithFrame:CGRectMake(0,0,kHudWidth,kHudHeight)];
     	[hudView setBundleID:bundleID];
-    	MRYIPCCenter* client = [MRYIPCCenter centerNamed:appNotify];
-    	[hudView setClient:client];
+    	[hudView setClient:(void*)_webSocket];
     	[hudView initScale];
     	[_hudViews addObject:hudView];
 	    

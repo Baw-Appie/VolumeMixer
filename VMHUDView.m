@@ -2,7 +2,7 @@
 #import "VMHUDWindow.h"
 #import "MTMaterialView.h"
 #import <objc/runtime.h>
-#import <MRYIPCCenter/MRYIPCCenter.h>
+#include "CoreWebSocket/CoreWebSocket.h"
 
 @interface VMHUDView  (){
     CGPoint _originalPoint;//之前的位置
@@ -115,10 +115,15 @@
         CGFloat newY=MIN(MAX(_clippingView.frame.origin.y+offsetY,0),_clippingView.frame.size.height);
         CGFloat scale=1.-newY/_clippingView.frame.size.height;
         // NSLog(@"Scale:%lf",scale);
-        if(fabs(scale-_curScale)>1/8){
+        if(fabs(scale-_curScale)>1./16.||scale==0.){
         	_curScale=scale;
             // NSLog(@"newScale:%lf",_curScale);
-            [_client callExternalMethod:@selector(setVolume:)withArguments:@{@"curScale" : @(_curScale)} completion:^(id ret){}];
+            NSMutableDictionary*dict=[NSMutableDictionary new];
+            dict[@"bundleId"]=_bundleID;
+            dict[@"curScale"]=@(_curScale);
+            NSData*data = [NSJSONSerialization dataWithJSONObject:dict options:NSJSONWritingPrettyPrinted error:nil];
+            NSString*string=[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+            WebSocketWriteWithString((WebSocketRef)_client,(__bridge CFStringRef)string);
         }
 
         [_clippingView setFrame:CGRectMake(_clippingView.frame.origin.x,
